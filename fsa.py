@@ -43,17 +43,19 @@ class FSA:
     def check_membership(self, element: str, elements: Set[str]):
         """Check if element is in elements"""
 
-        if element in elements:
-            pass
-        else:
+        if not element in elements:
             raise ValueError('Variables need to be members of states and input_alphabet')
+
+    def check_non_membership(self, element:str, elements: Set[str]):
+        """Check if element is not in elements"""
+
+        if element in elements:
+            raise ValueError('Variables cannot be members of states')
 
     def check_subset(self, F: Set[str], Q: Set[str]):
         """Check if subset is the subset of superset"""
 
-        if F.issubset(Q):
-            pass
-        else:
+        if not F.issubset(Q):
             raise ValueError('Final states must be a subset of states')
 
     def check_transition_dict(self, Q: Set[str], Sigma: Set[str], delta: Dict[Tuple[str, str], str]):
@@ -88,6 +90,47 @@ class FSA:
         else:
             return False
 
+    def concatenate(self, other_fsa: Union['FSA', 'NFSA']) -> 'NFSA':
+        """Concatenate two fsa objects together"""
+
+        #Test this function
+        new_states = self.states.union(other_fsa.states)
+        new_alphabet = self.states.union(other_fsa.states)
+        new_start = self.start_state
+        new_finals = self.final_states.union(other_fsa.final_states)
+        new_transitions = self.transition_dict.update(other_fsa.transition_dict)
+        for final_state in self.final_states:
+            new_transitions[(final_state, '')] = other_fsa.start_state
+
+        return NFSA(new_states, new_alphabet, new_start, new_finals, new_transitions)
+
+    def close(self, new_start: str, new_final: str) -> 'NFSA':
+        """Take a fsa and apply the Kleene closure to it"""
+
+        #Check if these state names already exist in states
+        self.check_non_membership(new_start, self.states)
+        self.check_non_membership(new_final, self.states)
+
+        #Get variables for closed nfsa
+        new_states = self.states.union({new_start}).union({new_final})
+        new_alphabet = self.input_alphabet
+        new_finals = self.final_states.union({new_final})
+        new_transitions = self.transition_dict
+
+        #Make existing transitions nondeterministic
+        for key, value in new_transitions.items():
+            new_transitions[key] = {value}
+
+        #Add empty string paths from new start state to previos start state and new final state
+        new_transitions.update({(new_start, ''): {self.start_state, new_final}})
+
+        #Add empty transitions from all the previous final states to the new one and previous start state
+        for final_state in self.final_states:
+            new_transitions.update({(final_state, ''): {self.start_state, new_final}})
+
+        return NFSA(new_states, new_alphabet, new_start, new_finals, new_transitions)
+
+
 class NFSA(FSA):
     """A class object representing a non deterministic finite state automata
     
@@ -100,9 +143,29 @@ class NFSA(FSA):
     ----------
     """
 
-    def __init__(self, states: Set[str], input_alphabet: Set[str], start_state: str, final_states: Set[str], transition_dict: Dict[Tuple[str, str], str]):
+    def __init__(self, states: Set[str], input_alphabet: Set[str], start_state: str, final_states: Set[str], transition_dict: Dict[Tuple[str, str], Set[str]]):
+        
+        #Add empty string to alphabet
         input_alphabet.add('')
-        super().__init__(states, input_alphabet, start_state, final_states, transition_dict)
+
+        #Check whether the inputs are valid
+        self.check_membership(start_state, states)
+        self.check_subset(final_states, states)
+        self.check_transition_dict(states, input_alphabet, transition_dict)
+        
+        self.states = states
+        self.input_alphabet = input_alphabet
+        self.start_state = start_state
+        self.final_states = final_states
+        self.transition_dict = transition_dict
+
+    def check_transition_dict(self, Q: Set[str], Sigma: Set[str], delta: Dict[Tuple[str, str], Set[str]]):
+        """Check if all keys in delta are elements of q and sigma and values are a subset of q"""
+
+        for key, value in delta.items():
+            self.check_membership(key[0], Q)
+            self.check_membership(key[1], Sigma)
+            self.check_subset(value, Q)
 
     def recognize(self, tape: List[str]) -> bool:
         """Check if the sequence of strings is recognized by the nfsa"""
@@ -130,9 +193,9 @@ class NFSA(FSA):
 
         search_states = []
         if (current_node, '') in self.transition_dict.keys():
-            search_states.append((self.transition_dict[(current_node, '')], index))
+            search_states += [(x, index) for x in self.transition_dict[(current_node, '')]]
         if index < len(tape):
-            search_states.append((self.transition_dict[(current_node, tape[index])], index+1))
+            search_states += [(x, index+1) for x in self.transition_dict[(current_node, tape[index])]]
 
         return search_states
 
@@ -146,23 +209,15 @@ class NFSA(FSA):
         else:
             return False
 
-def concatenate(fsa1: Union[FSA, NFSA], fsa2: Union[FSA, NFSA]) -> NFSA:
-    """Concatenate two fsa objects together"""
-
-    new_states = fsa1.states.union(fsa2.states)
-    new_alphabet = fsa1.states.union(fsa2.states)
-    new_start = fsa1.start_state
-    new_finals = fsa1.final_states.union(fsa2.final_states)
-    new_transitions = fsa1.transition_dict.update(fsa2.transition_dict)
-    for final_state in fsa1.final_states:
-        new_transitions[(final_state, '')] = fsa2.start_state
-
-    return NFSA(new_states, new_alphabet, new_start, new_finals, new_transitions)
-
-states = {'0', '1'}
+states = {'0', '-1'}
 input_alpha = {'a', 'b'}
 start = '0'
-final_states = {'1'}
-transition_dict = {('0', ''): '0', ('0', 'a'): '0', ('0', 'b'): '1', ('1', ''): '1', ('1', 'a'): '1', ('1', 'b'): '0'}
-nfsa = NFSA(states, input_alpha, start, final_states, transition_dict)
-print(nfsa.recognize('aaaaaaaaaaab'))
+final_states = {'-1'}
+transition_dict = {('0', 'a'): '0', ('0', 'b'): '-1', ('-1', 'a'): '-1', ('-1', 'b'): '0'}
+fsa = FSA(states, input_alpha, start, final_states, transition_dict)
+nfsa = fsa.close('-2', '3')
+print(nfsa.states)
+print(nfsa.input_alphabet)
+print(nfsa.start_state)
+print(nfsa.final_states)
+print(nfsa.transition_dict)
