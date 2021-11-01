@@ -1,5 +1,4 @@
 import math
-from collections import defaultdict
 from typing import List, Dict, Tuple, Set, Union, Type
 
 class FSA:
