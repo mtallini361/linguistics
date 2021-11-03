@@ -302,6 +302,7 @@ class SequentialFST(FSA):
         """Initialize the SequentialFST object"""
 
         super().__init__(states, input_alpha, start_state, final_states, trans_dict)
+        output_alpha.add('')
         self.output_alphabet = output_alpha
 
         self.check_output_dict(output_dict)
@@ -349,6 +350,47 @@ class SequentialFST(FSA):
             return output_string
         else:
             return None
+
+    def invert_dicts(self) -> Tuple[Dict[Tuple[str, str], str], Dict[Tuple[str, str], str]]:
+        """Invert trans_dict and output_dict to switch key[1] with value"""
+
+        new_trans_dict = {}
+        new_output_dict = {}
+        for key, value in self.output_dict.items():
+            new_output_dict[(key[0], value)] = key[1]
+            new_trans_dict[(key[0], value)] = self.transition_dict[key]
+
+        return new_trans_dict, new_output_dict
+
+    def invert(self):
+        """Invert the fsts output and input alphabets along with transitions"""
+
+        #Place alphabets into temp variables
+        input_alpha = self.alphabet
+        output_alpha = self.output_alphabet
+
+        #Set the opposite alphabet as the new one
+        self.alphabet = output_alpha
+        self.output_alphabet = input_alpha
+
+        #Invert dictionaries
+        new_trans_dict, new_output_dict = self.invert_dicts()
+
+        #Check new_dicts viability set transition and output dicts
+        self.check_transition_dict(new_trans_dict)
+        self.transition_dict = new_trans_dict
+        self.check_output_dict(new_output_dict)
+        self.output_dict = new_output_dict
+
+    def compose(self, other_sfst: 'SequentialFST') -> 'SequentialFST':
+        """"""
+        pass
+
+
+        
+        
+        
+
 if __name__ == '__main__':
     states = {'0', '1'}
     alpha = {'a', 'b'}
@@ -358,4 +400,8 @@ if __name__ == '__main__':
     transition_dict = {('0', 'a'): '0', ('0', 'b'): '1', ('1', 'a'): '0', ('1', 'b'): '1'}
     output_dict = {('0', 'a'): 'y', ('0', 'b'): 'z', ('1', 'a'): 'a', ('1', 'b'): 'z'}
     sfst = SequentialFST(states, alpha, output_alpha, start_state, final_states, transition_dict, output_dict)
-    print(sfst.transduce('bbbbbaababab'))
+    print(sfst.invert())
+    print(sfst.alphabet)
+    print(sfst.output_alphabet)
+    print(sfst.transition_dict)
+    print(sfst.output_dict)
