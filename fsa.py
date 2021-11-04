@@ -343,7 +343,7 @@ class FST(NFSA):
 
         return False
 
-    def generate_new_output_states(self, tape: str, current_state: Tuple[str, int, str]) -> List[Tuple[str, int]]:
+    def generate_new_output_states(self, tape: str, current_state: Tuple[str, int, str]) -> List[Tuple[str, int, str]]:
         """Return a list of all the possible state paths at current_state with tape"""
 
         current_node = current_state[0]
@@ -359,7 +359,7 @@ class FST(NFSA):
             
         return search_states
 
-    def invert_dicts(self) -> Tuple[Dict[Tuple[str, str], str], Dict[Tuple[str, str], str]]:
+    def invert_dicts(self) -> Tuple[Dict[Tuple[str, str], Set[str]], Dict[Tuple[str, str], Set[str]]]:
         """Invert trans_dict and output_dict to switch key[1] with value"""
 
         new_trans_dict = {}
