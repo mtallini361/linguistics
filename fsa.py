@@ -325,7 +325,7 @@ class FST(NFSA):
         if not self.transition_dict.keys() == output_dict.keys():
             raise ValueError("All transitions in transition_dict must be in output_dict")
 
-    def transduce(self, tape: str) -> str:
+    def transduce(self, tape: str) -> Union[str, bool]:
         """Check if the sequence of strings is recognized by the fst"""
 
         agenda = [(self.start_state, 0, '')]
