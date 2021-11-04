@@ -263,7 +263,7 @@ class NFSA(FSA):
 
         return False
 
-    def generate_new_states(self, tape: List[str], current_state: Tuple[str, int]) -> List[Tuple[str, int]]:
+    def generate_new_states(self, tape: str, current_state: Tuple[str, int]) -> List[Tuple[str, int]]:
         """Return a list of all the possible state paths at current_state with tape"""
 
         current_node = current_state[0]
@@ -277,7 +277,7 @@ class NFSA(FSA):
 
         return search_states
 
-    def accept_state(self, tape: List[str], search_state: Tuple[str, int]) -> bool:
+    def accept_state(self, tape: str, search_state: Tuple[str, int]) -> bool:
         """Test if in a final state at end of tape"""
 
         current_node = search_state[0]
@@ -287,7 +287,7 @@ class NFSA(FSA):
         else:
             return False
 
-class SequentialFST(FSA):
+class FST(NFSA):
     """A class to represent a finite state transducer
     
     This class object defines relations of strings that are accepted
@@ -298,8 +298,8 @@ class SequentialFST(FSA):
     Methods
     ----------
     """
-    def __init__(self, states: Set[str], input_alpha: Set[str], output_alpha: Set[str], start_state: str, final_states: Set[str], trans_dict: Dict[Tuple[str, str], str], output_dict: Dict[Tuple[str, str], str]):
-        """Initialize the SequentialFST object"""
+    def __init__(self, states: Set[str], input_alpha: Set[str], output_alpha: Set[str], start_state: str, final_states: Set[str], trans_dict: Dict[Tuple[str, str], Set[str]], output_dict: Dict[Tuple[str, str], Set[str]]):
+        """Initialize the FST object"""
 
         super().__init__(states, input_alpha, start_state, final_states, trans_dict)
         output_alpha.add('')
@@ -308,48 +308,56 @@ class SequentialFST(FSA):
         self.check_output_dict(output_dict)
         self.output_dict = output_dict
 
-    def check_output_string(self, string: str):
+    def check_output_strings(self, strings: Set[str]):
         """Check if string is in output alpha"""
 
-        if not self.check_membership(string, self.output_alphabet):
-            raise ValueError("Output string must be in output_alphabet")
+        if not self.check_subset(strings, self.output_alphabet):
+            raise ValueError("Output strings must be subset of output_alphabet")
 
-    def check_output_dict(self, output_dict: Dict[Tuple[str, str], str]):
+    def check_output_dict(self, output_dict: Dict[Tuple[str, str], Set[str]]):
         """Check if a valid output dict"""
 
         for key, value in output_dict.items():
             self.check_state(key[0])
             self.check_string(key[1])
-            self.check_output_string(value)
+            self.check_output_strings(value)
 
         if not self.transition_dict.keys() == output_dict.keys():
             raise ValueError("All transitions in transition_dict must be in output_dict")
 
     def transduce(self, tape: str) -> str:
-        """Pass a string into the transducer and if accepted return the output string"""
+        """Check if the sequence of strings is recognized by the fst"""
 
-        #Start read from the start state
-        output_string = ''
-        current_state = self.start_state
+        agenda = [(self.start_state, 0, '')]
+        current_search_state = agenda.pop()
 
-        #Iterate over all strings in list
-        for x in tape:
-
-            #Check if current state and current str are in dictionary
-            #If so return new state
-            if (current_state, x) in self.transition_dict.keys():
-                output_string += self.output_dict[(current_state, x)]
-                current_state = self.transition_dict[(current_state, x)]
-
-            #If not return False
+        for _ in range(math.factorial(len(tape))):
+            if self.accept_state(tape, current_search_state):
+                return current_search_state[2]
             else:
-                return None
-        
-        #If the end of the list is in a final state return True
-        if current_state in self.final_states:
-            return output_string
-        else:
-            return None
+                agenda += self.generate_new_output_states(tape, current_search_state)
+            if len(agenda) == 0:
+                return False
+            else:
+                current_search_state = agenda.pop()
+
+        return False
+
+    def generate_new_output_states(self, tape: str, current_state: Tuple[str, int, str]) -> List[Tuple[str, int]]:
+        """Return a list of all the possible state paths at current_state with tape"""
+
+        current_node = current_state[0]
+        index = current_state[1]
+        output_string = current_state[2]
+
+        search_states = []
+        if (current_node, '') in self.transition_dict.keys():
+            search_states += [(x, index, output_string+y) for x in self.transition_dict[(current_node, '')] for y in self.output_dict[(current_node, '')]]
+            
+        if index < len(tape):
+            search_states += [(x, index+1, output_string+y) for x in self.transition_dict[(current_node, tape[index])] for y in self.output_dict[(current_node, tape[index])]]
+            
+        return search_states
 
     def invert_dicts(self) -> Tuple[Dict[Tuple[str, str], str], Dict[Tuple[str, str], str]]:
         """Invert trans_dict and output_dict to switch key[1] with value"""
@@ -357,8 +365,9 @@ class SequentialFST(FSA):
         new_trans_dict = {}
         new_output_dict = {}
         for key, value in self.output_dict.items():
-            new_output_dict[(key[0], value)] = key[1]
-            new_trans_dict[(key[0], value)] = self.transition_dict[key]
+            for x in value:
+                new_output_dict[(key[0], x)] = {key[1]}
+                new_trans_dict[(key[0], x)] = self.transition_dict[key]
 
         return new_trans_dict, new_output_dict
 
@@ -382,7 +391,7 @@ class SequentialFST(FSA):
         self.check_output_dict(new_output_dict)
         self.output_dict = new_output_dict
 
-    def compose(self, other_sfst: 'SequentialFST') -> 'SequentialFST':
+    def compose(self, other_sfst: 'FST') -> 'FST':
         """"""
         pass
 
@@ -397,10 +406,10 @@ if __name__ == '__main__':
     output_alpha = {'a', 'y', 'z'}
     start_state = '0'
     final_states = {'1'}
-    transition_dict = {('0', 'a'): '0', ('0', 'b'): '1', ('1', 'a'): '0', ('1', 'b'): '1'}
-    output_dict = {('0', 'a'): 'y', ('0', 'b'): 'z', ('1', 'a'): 'a', ('1', 'b'): 'z'}
-    sfst = SequentialFST(states, alpha, output_alpha, start_state, final_states, transition_dict, output_dict)
-    print(sfst.invert())
+    transition_dict = {('0', 'a'): {'0'}, ('0', 'b'): {'1'}, ('1', 'a'): {'0'}, ('1', 'b'): {'1'}}
+    output_dict = {('0', 'a'): {"y"},  ('0', 'b'): {'z'}, ('1', 'a'): {'y'}, ('1', 'b'): {'z'}}
+    sfst = FST(states, alpha, output_alpha, start_state, final_states, transition_dict, output_dict)
+    sfst.invert()
     print(sfst.alphabet)
     print(sfst.output_alphabet)
     print(sfst.transition_dict)
