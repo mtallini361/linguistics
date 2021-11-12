@@ -23,34 +23,34 @@ class FSA:
         self.states = states
         self.alphabet = alphabet
 
-        self.check_start(start)
+        self.check_states_membership(start)
         self.start = start
 
-        self.check_final(final)
+        self.check_states_subset(final)
         self.final = final
         
         self.check_transitions(transitions)
         self.transitions = transitions
 
-    def check_start(self, start: str):
-        """Check if this is a valid start state"""
+    def check_states_membership(self, state: str):
+        """Check if this is a valid state"""
 
-        if not start in self.states:
-            raise ValueError("Start state must be in states")
+        if not state in self.states:
+            raise ValueError("State must be in states")
 
-    def check_final(self, final: Set[str]):
+    def check_states_subset(self, sub_states: Set[str]):
         """Check if this is a valid set of final states"""
 
-        if not final.issubset(self.states):
+        if not sub_states.issubset(self.states):
             raise ValueError("Final states must be a subset of states")
 
-    def check_values(self, transitions: pd.DataFrame) -> bool:
+    def check_values(self, table: pd.DataFrame) -> bool:
         """Check if the values of transitions are valid"""
 
         valid_values = list(self.states)
         valid_values.append(None)
 
-        return np.isin(transitions.to_numpy(), valid_values).all()
+        return np.isin(table.to_numpy(), valid_values).all()
 
     def check_transitions(self, transitions: pd.DataFrame):
         """Check if this is a valid transitions dataframe"""
@@ -116,10 +116,10 @@ class NFSA(FSA):
         self.states = states
         self.alphabet = alphabet
 
-        self.check_start(start)
+        self.check_states_membership(start)
         self.start = start
 
-        self.check_final(final)
+        self.check_states_subset(final)
         self.final = final
         
         self.check_transitions(transitions)
@@ -135,12 +135,12 @@ class NFSA(FSA):
             for i in range(2 ** length)
         }
 
-    def check_values(self, transitions: pd.DataFrame) -> bool:
+    def check_values(self, table: pd.DataFrame) -> bool:
         """Check if the values of transitions are valid"""
 
         ps = self.power_set(self.states)
 
-        return np.isin(transitions.to_numpy(), list(ps)).all()
+        return np.isin(table.to_numpy(), list(ps)).all()
 
     def recognize(self, tape: List[Any]) -> bool:
         """Check if tape is accepted by nfsa"""
