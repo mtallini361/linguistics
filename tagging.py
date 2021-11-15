@@ -120,7 +120,7 @@ class HiddenMarkovModel(MarkovChain):
         forward = pd.DataFrame(self.start * self.emissions.loc[observed[0]])
 
         for t in range(1, len(observed)):
-            forward[t] =  self.transitions @ forward[t-1] @ self.emissions.loc[observed[t]]
+            forward[t] =  self.transitions.multiply(forward[t-1], axis="columns").multiply(self.emissions.loc[observed[t]], axis="index").sum(axis=1)
         
         return  forward[len(observed)-1] @ self.final.T
 
@@ -131,12 +131,12 @@ class HiddenMarkovModel(MarkovChain):
         backpointer = pd.DataFrame(np.empty((self.start.shape[0], 1)), index=self.start.index)
         
         for t in range(1, len(observed)):
-           prod_matrix = self.transitions.multiply(viterbi[t-1], axis="columns").multiply(self.emissions.loc[observed[t]], axis='index') 
+           prod_matrix = self.transitions.multiply(viterbi[t-1], axis="columns").multiply(self.emissions.loc[observed[t]], axis='index')
            viterbi[t] = prod_matrix.max(axis=1)
-           backpointer[t] = self.transitions.multiply(viterbi[t-1], axis="columns").idxmax()
+           backpointer[t] = self.transitions.multiply(viterbi[t-1], axis="columns").idxmax(axis=1)
 
         final_viterbi = (viterbi[len(observed)-1] * self.final).max()
-        final_backpointer = (viterbi[len(observed)-1] * self.final).idxmax()
+        final_backpointer = (viterbi[len(observed)-1] * self.final).idxmax(axis=1)
         previous = final_backpointer
         
         best_path = [previous]
@@ -169,10 +169,10 @@ if __name__ == '__main__':
     hmm = HiddenMarkovModel(states, start, final, transitions, observations)
     print("HiddenMarkovModel Initialization: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print(hmm.forward(["happy", "sad", "sad", "happy"]))
+    print("HiddenMarkovModel forward results: ", hmm.forward(["happy", "sad", "sad", "happy"]))
     print("HiddenMarkovModel forward: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print(hmm.viterbi(["happy", "happy", "happy", "happy"]))
+    print("HiddenMarkovModel viterbi results: ", hmm.viterbi(["happy", "happy", "happy", "happy"]))
     print("HiddenMarkovModel viterbi: {}s".format(time.time() - start_time))
 
 class HMMTagger(HiddenMarkovModel):
@@ -258,8 +258,8 @@ if __name__ == '__main__':
     hmmtagger = HMMTagger(brown_sents)
     print("HMMTagger Initialization: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print(hmmtagger.forward(["my", "brother", "needs", "a", "new", "tire"]))
+    print("HMMTagger forward results: ", hmmtagger.forward(["my", "brother", "needs", "a", "new", "tire"]))
     print("HMMTagger forward: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print(hmmtagger.viterbi(["i", "need", "a", "new", "tire"]))
+    print("HMMTagger viterbi results: ", hmmtagger.viterbi(["my", "old", "man", "needs", "food"]))
     print("HMMTagger viterbi: {}s".format(time.time() - start_time))
