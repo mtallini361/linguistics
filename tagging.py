@@ -157,10 +157,9 @@ class HiddenMarkovModel(MarkovChain):
         p_fwd = forward[len(observed)-1] @ self.final
 
         col = self.final.copy()
-        col.name = len(observed)
+        col.name = len(observed) - 1
         backward = pd.DataFrame(col)
-        print(enumerate(reversed(observed[1:] + (None,))))
-        for t in range(len(observed)-1, -1, -1):
+        for t in range(len(observed)-2, -1, -1):
             backward[t] = backward[t+1].multiply(self.emissions.loc[observed[t]])
             backward[t] = self.transitions.multiply(backward[t], axis='index').sum(axis=0)
 
@@ -169,8 +168,8 @@ class HiddenMarkovModel(MarkovChain):
         posterior = pd.DataFrame(forward[0] * backward[0] / p_fwd)
         for i in range(1, len(observed)):
             posterior[i] = forward[i] * backward[i] / p_fwd
-        #print(p_fwd)
-        #print(p_bkw)
+        print(p_fwd)
+        print(p_bkw)
         #assert p_fwd == p_bkw
         return posterior.sum(axis=0)
 
