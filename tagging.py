@@ -146,6 +146,34 @@ class HiddenMarkovModel(MarkovChain):
 
         return best_path
 
+    def forward_backward(self, observed: List[Any]) -> List[str]:
+        """Optimize HMM transition and emission probabilities"""
+
+        forward = pd.DataFrame(self.start * self.emissions.loc[observed[0]])
+        for t in range(1, len(observed)):
+            forward[t] = self.transitions.multiply(forward[t-1], axis="columns").sum(axis=1)
+            forward[t] = forward[t] * self.emissions.loc[observed[t]]
+
+        p_fwd = forward[len(observed)-1] @ self.final
+
+        col = self.final.copy()
+        col.name = len(observed)
+        backward = pd.DataFrame(col)
+        print(enumerate(reversed(observed[1:] + (None,))))
+        for t in range(len(observed)-1, -1, -1):
+            backward[t] = backward[t+1].multiply(self.emissions.loc[observed[t]])
+            backward[t] = self.transitions.multiply(backward[t], axis='index').sum(axis=0)
+
+        p_bkw = (self.start * self.emissions.loc[observed[0]] * backward[0]).sum()
+
+        posterior = pd.DataFrame(forward[0] * backward[0] / p_fwd)
+        for i in range(1, len(observed)):
+            posterior[i] = forward[i] * backward[i] / p_fwd
+        #print(p_fwd)
+        #print(p_bkw)
+        #assert p_fwd == p_bkw
+        return posterior.sum(axis=0)
+
 
 if __name__ == '__main__':
     states = {'rainy', 'sunny'}
@@ -174,6 +202,9 @@ if __name__ == '__main__':
     start_time = time.time()
     print("HiddenMarkovModel viterbi results: ", hmm.viterbi(["happy", "happy", "happy", "happy"]))
     print("HiddenMarkovModel viterbi: {}s".format(time.time() - start_time))
+    start_time = time.time()
+    print("HiddenMarkovModel forward_backward results: ", hmm.forward_backward(["happy", "happy", "happy", "happy"]))
+    print("HiddenMarkovModel forward_backward: {}s".format(time.time() - start_time))
 
 class HMMTagger(HiddenMarkovModel):
     """To tag input sentences using hidden markov models
@@ -263,3 +294,6 @@ if __name__ == '__main__':
     start_time = time.time()
     print("HMMTagger viterbi results: ", hmmtagger.viterbi(["my", "old", "man", "needs", "food"]))
     print("HMMTagger viterbi: {}s".format(time.time() - start_time))
+    start_time = time.time()
+    print("HMMTagger forward_backward results: ", hmmtagger.forward_backward(["my", "old", "man", "needs", "food"]))
+    print("HMMTagger forward_backward: {}s".format(time.time() - start_time))
