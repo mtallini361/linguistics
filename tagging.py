@@ -1,5 +1,6 @@
 import time
 import math
+from functools import reduce
 from collections import Counter, defaultdict
 from typing import Set, Any, List, Tuple, Dict, Union
 
@@ -147,13 +148,13 @@ class HiddenMarkovModel(MarkovChain):
 
         return best_path
 
-    def forward_backward(self, observed: List[Any]) -> Tuple[pd.DataFrame, pd.DataFrame, float]:
+    def forward_backward(self, transition_df: pd.DataFrame, emission_df: pd.DataFrame, observed: List[Any]) -> Tuple[pd.DataFrame, pd.DataFrame, float]:
         """Return the forward and backward liklihoods of the observed"""
 
-        forward = pd.DataFrame(self.start * self.emissions.loc[observed[0]])
+        forward = pd.DataFrame(self.start * emission_df.loc[observed[0]])
         for t in range(1, len(observed)):
-            forward[t] = self.transitions.multiply(forward[t-1], axis="columns").sum(axis=1)
-            forward[t] = forward[t] * self.emissions.loc[observed[t]]
+            forward[t] = transition_df.multiply(forward[t-1], axis="columns").sum(axis=1)
+            forward[t] = forward[t] * emission_df.loc[observed[t]]
 
         p_fwd = forward[len(observed)-1] @ self.final
 
@@ -161,29 +162,51 @@ class HiddenMarkovModel(MarkovChain):
         col.name = len(observed) - 1
         backward = pd.DataFrame(col)
         for t in range(len(observed)-2, -1, -1):
-            backward[t] = self.transitions.multiply(self.emissions.loc[observed[t+1]], axis="index").multiply(backward[t+1], axis="index").sum(axis=0)
+            backward[t] = transition_df.multiply(emission_df.loc[observed[t+1]], axis="index").multiply(backward[t+1], axis="index").sum(axis=0)
 
-        p_bkw = (self.start * self.emissions.loc[observed[0]] * backward[0]).sum()
+        p_bkw = (self.start * emission_df.loc[observed[0]] * backward[0]).sum()
 
+        if not math.isclose(p_fwd, p_bkw):
+            print(p_fwd)
+            print(p_bkw)
         assert math.isclose(p_fwd, p_bkw)
         return forward, backward, p_fwd
 
-    def baum_welch(self, observed: List[Any]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def baum_welch(self, observed: List[Any], n_iter: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Return optimized transition and emission dataframes"""
 
-        alpha, beta, posterior = self.forward_backward(observed)
-        gamma = (alpha * beta).div((alpha * beta).sum(axis=0), axis="columns")
+        transitions = self.transitions
+        emissions = self.emissions
+        for _ in range(n_iter):
+            old_transitions = transitions
+            old_emissions = emissions
+            transitions = self.transitions
+            emissions = self.emissions
+            # expectation step, forward and backward probs
+            alpha, beta, posterior = self.forward_backward(old_transitions, old_emissions, observed)
+            
+            gamma = (alpha * beta).div((alpha * beta).sum(axis=0), axis="columns")
+            xi = []
+            for t in range(len(observed) - 1):
+                num = old_transitions.multiply(alpha[t], axis="columns").multiply(beta[t+1], axis="index").multiply(old_emissions.loc[observed[t+1]], axis="index")
+                xi_t = num / posterior
+                xi.append(xi_t)
+            
+            xi = reduce(lambda x, y: x.add(y), xi).div(reduce(lambda x, y: x.add(y), [z.sum(axis=0) for z in xi]), axis="columns")
+            transitions = xi.combine_first(transitions)
+            transitions = transitions.div(transitions.sum(axis=0) + self.final, axis="columns")
 
-        xi = []
-        mi = []
-        for t in range(len(observed) - 2):
-            num = self.transitions.multiply(alpha[t], axis="columns").multiply(beta[t+1], axis="index").multiply(self.emissions.loc[observed[t+1]], axis="index")
-            xi_t = num / num.sum(axis=0).sum(axis=0)
-            mi += list(zip([t for _ in range(len(xi_t.columns))], xi_t.columns))
-            xi.append(xi_t)
-        print(pd.DataFrame(pd.Series(xi), index=pd.MultiIndex.from_tuples(mi)))
+            observed_vocab = list(set(observed))
+            for v in observed_vocab:
+                v_sum = []
+                for t in range(len(observed)):
+                    if observed[t] == v:
+                        v_sum.append(gamma[t])
+                emissions.loc[v] = (reduce(lambda x, y: x.add(y), v_sum) / gamma.sum(axis=1)).combine_first(emissions.loc[v])
+            emissions = emissions.div(emissions.sum(axis=0), axis="columns")
 
-        
+        # get out   
+        return transitions, emissions
 
 
 
@@ -192,11 +215,11 @@ if __name__ == '__main__':
     index = list(states)
     index.sort()
     start = pd.Series({'rainy': .25, 'sunny': .75})
-    final = pd.Series({'rainy': .75, 'sunny': .25})
+    final = pd.Series({'rainy': .1, 'sunny': .2})
     transitions = pd.DataFrame(
         [
-            {'rainy': .2, 'sunny': .5},
-            {'rainy': .8, 'sunny': .5}
+            {'rainy': .1, 'sunny': .4},
+            {'rainy': .8, 'sunny': .4}
         ], index=index
     )
     observations = pd.DataFrame(
@@ -215,13 +238,11 @@ if __name__ == '__main__':
     print("HiddenMarkovModel viterbi results: ", hmm.viterbi(["happy", "happy", "happy", "happy"]))
     print("HiddenMarkovModel viterbi: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print("HiddenMarkovModel forward_backward results: ", hmm.forward_backward(["happy", "happy", "happy", "happy"]))
+    print("HiddenMarkovModel forward_backward results: ", hmm.forward_backward(hmm.transitions, hmm.emissions, ["happy", "happy", "happy", "happy"]))
     print("HiddenMarkovModel forward_backward: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print("HiddenMarkovModel baum_welch results: ", hmm.baum_welch(["happy", "happy", "happy", "happy"]))
+    print("HiddenMarkovModel baum_welch results: ", hmm.baum_welch(["happy", "happy", "happy", "happy"], 100))
     print("HiddenMarkovModel baum_welch: {}s".format(time.time() - start_time))
-
-
 
 class HMMTagger(HiddenMarkovModel):
     """To tag input sentences using hidden markov models
@@ -312,8 +333,8 @@ if __name__ == '__main__':
     print("HMMTagger viterbi results: ", hmmtagger.viterbi(["my", "old", "man", "needs", "food"]))
     print("HMMTagger viterbi: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print("HMMTagger forward_backward results: ", hmmtagger.forward_backward(["my", "old", "man", "needs", "food"]))
+    print("HMMTagger forward_backward results: ", hmmtagger.forward_backward(hmmtagger.transitions, hmmtagger.emissions, ["my", "old", "man", "needs", "food"]))
     print("HMMTagger forward_backward: {}s".format(time.time() - start_time))
     start_time = time.time()
-    print("HMMTagger baum_welch results: ", hmmtagger.baum_welch(["my", "old", "man", "needs", "food"]))
+    print("HMMTagger baum_welch results: ", hmmtagger.baum_welch(["my", "old", "man", "needs", "food"], 100))
     print("HMMTagger baum_welch: {}s".format(time.time() - start_time))
